@@ -5,7 +5,6 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_openai import ChatOpenAI
 from langserve import add_routes
 from dotenv import load_dotenv
-import os
 
 load_dotenv()
 

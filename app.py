@@ -1,53 +1,50 @@
-import getpass
-import os
-from langchain_openai import ChatOpenAI
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain import hub
 from langchain_core.prompts import ChatPromptTemplate
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.runnables import RunnablePassthrough
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_community.vectorstores import Chroma
+from langchain_community.document_loaders import PyPDFLoader
+from dotenv import load_dotenv
 
-os.environ["OPENAI_API_KEY"] = getpass.getpass()
+load_dotenv()
 
+# Load PDF
+loader = PyPDFLoader(
+    "./example_data/a1.pdf",
+)
+docs = loader.load()
 
-# Model from the langchain_openai import ChatOpenAI
+# Split
+text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+splits = text_splitter.split_documents(docs)
 
+# Embed
+vectorstore = Chroma.from_documents(documents=splits, 
+                                    embedding=OpenAIEmbeddings())
 
-model = ChatOpenAI(model="gpt-4")
+retriever = vectorstore.as_retriever()
 
-messages = [
-    SystemMessage(content="Translate the following from English into Italian"),
-    HumanMessage(content="hi!"),
-]
+#### RETRIEVAL and GENERATION ####
 
-model.invoke(messages)
-    # model.invoke exit: 
-    # AIMessage(content='ciao!', response_metadata={'token_usage': 
-    #   {'completion_tokens': 3, 'prompt_tokens': 20, 'total_tokens': 23}, 'model_name': 
-    #   'gpt-4', 'system_fingerprint': None, 'finish_reason': 'stop', 'logprobs': None},
-    #   id='run-fc5d7c88-9615-48ab-a3c7-425232b562c5-0')
+# Prompt
+prompt = hub.pull("rlm/rag-prompt")
 
+# LLM
+llm = ChatOpenAI(temperature=0)
 
-# Output Parser from the langchain_core.output_parsers import StrOutputParser
+# Post-processing
+def format_docs(docs):
+    return "\n\n".join(doc.page_content for doc in docs)
 
-parser = StrOutputParser()
-
-result = model.invoke(messages)
-
-parser.invoke(result)
-
-chain = model | parser
-
-chain.invoke(messages)
-
-
-# Prompt Template from the langchain_core.prompts import ChatPromptTemplate
-
-
-system_template = "Translate the following into {language}:"
-
-prompt_template = ChatPromptTemplate.from_messages(
-    [("system", system_template), ("user", "{text}")]
+# Chain
+rag_chain = (
+    {"context": retriever | format_docs, "question": RunnablePassthrough()}
+    | prompt
+    | llm
+    | StrOutputParser()
 )
 
-result = prompt_template.invoke({"language": "italian", "text": "hi"})
-
-result
+# Question
+rag_chain.invoke("What's the name of the company that's doing the transportation?")
