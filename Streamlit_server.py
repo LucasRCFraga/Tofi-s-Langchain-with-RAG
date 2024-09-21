@@ -5,7 +5,6 @@ from langchain_community.vectorstores import Chroma
 from langchain_community.document_loaders import PyPDFLoader
 from langchain.memory import ConversationBufferMemory
 from langchain.chains import ConversationalRetrievalChain
-from langchain.load import dumps, loads
 from dotenv import load_dotenv
 from PyPDF2 import PdfReader
 
@@ -42,8 +41,8 @@ def get_conversation_memory(retriever):
 
 def main():
     load_dotenv()
-    st.title("RAG-Fusion")
-    st.caption("Talk to Tofi")
+    st.title("Chatbot utilizing RAG")
+    st.caption("Talk to Tofi, your friendly chatbot")
 
     if "conversation" not in st.session_state:
         st.session_state.conversation = None
@@ -52,7 +51,6 @@ def main():
 
     pdf_docs = st.file_uploader("Upload your PDF files", accept_multiple_files=True)
     button = st.button("Submit")
-    st.session_state
 
     if button:
         if pdf_docs is None or user_input is None:
@@ -76,8 +74,6 @@ def main():
                 
                 # Displaying the conversation
                 st.write(st.session_state.conversation.invoke({"question": user_input}))
-
-                
 
 if __name__ == "__main__":
     main()
