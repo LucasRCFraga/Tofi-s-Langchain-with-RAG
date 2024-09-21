@@ -1,0 +1,4 @@
+[server]
+enableXsrfProtection = false
+enableCORS = false
+# These modifications were necessary to bypass an Axios error.
