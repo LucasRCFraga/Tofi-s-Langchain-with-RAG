@@ -1,141 +1,83 @@
 import streamlit as st
-from operator import itemgetter
-from langchain_core.prompts import ChatPromptTemplate
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.runnables import RunnablePassthrough
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_community.vectorstores import Chroma
 from langchain_community.document_loaders import PyPDFLoader
+from langchain.memory import ConversationBufferMemory
+from langchain.chains import ConversationalRetrievalChain
 from langchain.load import dumps, loads
 from dotenv import load_dotenv
-
-import pandas as pd
-from io import StringIO
 from PyPDF2 import PdfReader
 
+# Load PDF
+def get_pdf_text(pdf_docs):
+    text = ""
+    for pdf in pdf_docs:
+        pdf_reader = PdfReader(pdf)
+        for page in pdf_reader.pages:
+            text += page.extract_text()
+    return text 
 
-load_dotenv()
-
-st.title("RAG-Fusion")
-st.caption("Talk to Tofi")
-
-if "messages" not in st.session_state:
-    st.session_state["messages"] = [{"role": "assistant", "content": "Hi, i'm Tofi! How can I help you?"}]
-
-user_input = st.text_input("Enter your question:")
-
-uploaded_file = st.file_uploader("Upload a PDF file")
-st.write(uploaded_file.read().decode())
-
-st.write()
-"""if uploaded_file :
-
-   temp_file = "./data/temp.pdf"
-   with open(temp_file, "wb") as file:
-       file.write(uploaded_file.getvalue())
-       file_name = uploaded_file.name
-"""
-       
-
-button = st.button("Submit")
-
-def RAG_Fusion_Pipeline(user_input):
-    # Load PDF
-    url = st.session_state.url
-    loader = PyPDFLoader("./data/temp.pdf")
-    docs = loader.load()
-
-    # Split
+# Get text chunks
+def get_text_chunks(text):
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-    splits = text_splitter.split_documents(docs)
+    chunks = text_splitter.split_text(text)
+    return chunks
 
-    # Embed
-    vectorstore = Chroma.from_documents(documents=splits, 
-                                        embedding=OpenAIEmbeddings())
-
-    #Retriever
+# Embed
+def get_embed_text(splits):
+    vectorstore = Chroma.from_texts(texts=splits, embedding=OpenAIEmbeddings())
     retriever = vectorstore.as_retriever()
-    
-    # LLM
-    llm = ChatOpenAI(temperature=0.5)
+    return retriever
 
-    #Question
-    question = user_input
-    
-    #Rag-Fusion Prompt
-    template = """
-    You are a helpful assistant that generates multiple search queries based on a single input query. \n
-    Generate multiple search queries related to: {question} \n
-    Output (4 queries):
-    """
-    prompt_rag_fusion = ChatPromptTemplate.from_template(template)
-
-    generate_queries = (
-        prompt_rag_fusion 
-        | ChatOpenAI(temperature=0)
-        | StrOutputParser() 
-        | (lambda x: x.split("\n"))
+# Conversation memory
+def get_conversation_memory(retriever):
+    memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+    conversation_chain = ConversationalRetrievalChain.from_llm(
+        llm=ChatOpenAI(model="gpt-3.5-turbo", temperature=0),
+        retriever=retriever,
+        memory=memory
     )
+    return conversation_chain
 
-    def reciprocal_rank_fusion(results: list[list], k=60):
-        """ Reciprocal_rank_fusion that takes multiple lists of ranked documents 
-            and an optional parameter k used in the RRF formula """
-        
-        # Initialize a dictionary to hold fused scores for each unique document
-        fused_scores = {}
+def main():
+    load_dotenv()
+    st.title("RAG-Fusion")
+    st.caption("Talk to Tofi")
 
-        # Iterate through each list of ranked documents
-        for docs in results:
-            # Iterate through each document in the list, with its rank (position in the list)
-            for rank, doc in enumerate(docs):
-                # Convert the document to a string format to use as a key (assumes documents can be serialized to JSON)
-                doc_str = dumps(doc)
-                # If the document is not yet in the fused_scores dictionary, add it with an initial score of 0
-                if doc_str not in fused_scores:
-                    fused_scores[doc_str] = 0
-                # Retrieve the current score of the document, if any
-                previous_score = fused_scores[doc_str]
-                # Update the score of the document using the RRF formula: 1 / (rank + k)
-                fused_scores[doc_str] += 1 / (rank + k)
+    if "conversation" not in st.session_state:
+        st.session_state.conversation = None
 
-        # Sort the documents based on their fused scores in descending order to get the final reranked results
-        reranked_results = [
-            (loads(doc), score)
-            for doc, score in sorted(fused_scores.items(), key=lambda x: x[1], reverse=True)
-        ]
+    user_input = st.text_input("Enter your question:")
 
-        # Return the reranked results as a list of tuples, each containing the document and its fused score
-        return reranked_results
-    
-    retrieval_chain_rag_fusion = generate_queries | retriever.map() | reciprocal_rank_fusion
-    docs = retrieval_chain_rag_fusion.invoke({"question": question})
-    
-    # RAG
-    template = """Answer the following question based on this context:
+    pdf_docs = st.file_uploader("Upload your PDF files", accept_multiple_files=True)
+    button = st.button("Submit")
+    st.session_state
 
-    {context}
+    if button:
+        if pdf_docs is None or user_input is None:
+            st.warning("Please upload a PDF file to continue.")
+            st.stop()
 
-    Question: {question}
-    """
+        if pdf_docs is not None and user_input is not None:
+            with st.spinner("Processing..."):
+                # Get the pdf text
+                raw_pdf_text = get_pdf_text(pdf_docs)
 
-    prompt = ChatPromptTemplate.from_template(template)
+                # Get the text chunks
+                text_chunks = get_text_chunks(raw_pdf_text)
+                #st.write(text_chunks)
+                
+                # Embed the text chunks
+                vectorstore = get_embed_text(text_chunks)
+                
+                # Creating the conversation Chain
+                st.session_state.conversation = get_conversation_memory(vectorstore)
+                
+                # Displaying the conversation
+                st.write(st.session_state.conversation.invoke({"question": user_input}))
 
-    final_rag_chain = (
-        {"context": retrieval_chain_rag_fusion, 
-         "question": itemgetter("question")} 
-        | prompt
-        | llm
-        | StrOutputParser()
-    )
+                
 
-    final_rag_chain.invoke({"question":question})
-
-
-if button:
-    if uploaded_file is None or user_input is None:
-        st.warning("Please upload a PDF file to continue asdas.")
-        st.stop()
-    elif uploaded_file is not None and user_input is not None:
-        #treated_pdf = pd.read_csv(uploaded_file)
-        st.write(RAG_Fusion_Pipeline(user_input))
+if __name__ == "__main__":
+    main()

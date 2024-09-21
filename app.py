@@ -101,7 +101,7 @@ llm = ChatOpenAI(temperature=0.5)
 
 # Post-processing
 def format_docs(docs):
-    return "\n\n".join(doc.page_content for doc in docs)
+    return "\n\n".join(doc.page_content for doc in docs) #Not needed???
 
 # Chain
 rag_chain = (
