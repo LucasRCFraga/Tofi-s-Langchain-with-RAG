@@ -138,6 +138,16 @@ final_rag_chain = (
 
 final_rag_chain.invoke({"question":question})
 
+"""
+#Cursor provided code
+if uploaded_pdf is not None:
+    loader = PyPDFLoader(uploaded_pdf)
+    docs = loader.load()
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+    splits = text_splitter.split_documents(docs)
+    vectorstore = Chroma.from_documents(documents=splits, embedding=OpenAIEmbeddings())
+    retriever = vectorstore.as_retriever()
+"""
 
 
 """
