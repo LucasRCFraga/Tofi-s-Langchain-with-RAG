@@ -113,4 +113,4 @@ final_rag_chain = (
     | StrOutputParser()
 )
 
-final_rag_chain.invoke({"question":question})
+print(final_rag_chain.invoke({"question":question}))
